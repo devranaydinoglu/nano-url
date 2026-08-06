@@ -1,15 +1,4 @@
 services:
-  server_01:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: server_01
-    ports:
-      - 8080:8080
-    depends_on:
-      cassandra_01:
-        condition: service_healthy
-
   cassandra_01:
     image: cassandra:5.0.8
     container_name: cassandra_01
@@ -65,6 +54,31 @@ services:
       interval: 20s
       timeout: 10s
       retries: 2
+
+  cassandra_init:
+    image: cassandra:5.0.8
+    container_name: cassandra_init
+    depends_on:
+      cassandra_01:
+        condition: service_healthy
+    volumes:
+      - ./cassandra/init.cql:/init.cql:ro
+    entrypoint:
+      - sh
+      - -c
+      - cqlsh cassandra_01 -f /init.cql
+    restart: "no"
+
+  server_01:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: server_01
+    ports:
+      - 8080:8080
+    depends_on:
+      cassandra_01:
+        condition: service_healthy
 
   redis:
     image: redis:8.10.0
