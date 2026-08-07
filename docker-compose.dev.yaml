@@ -13,9 +13,10 @@ services:
       HEAP_NEWSIZE: 100M
     healthcheck:
       test: [ "CMD", "cqlsh", "-u", "cassandra", "-p", "cassandra" ]
-      interval: 20s
+      interval: 15s
       timeout: 10s
-      retries: 2
+      retries: 5
+      start_period: 60s
 
   cassandra_init:
     image: cassandra:5.0.8
