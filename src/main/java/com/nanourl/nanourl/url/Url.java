@@ -34,16 +34,64 @@ public class Url {
         this.createdAt = createdAt;
     }
 
+    public String getShortCode() {
+        return shortCode;
+    }
+
+    public String getOriginalUrl() {
+        return originalUrl;
+    }
+
+    public Long getSnowflakeId() {
+        return snowflakeId;
+    }
+
+    public int getUsageCounter() {
+        return usageCounter;
+    }
+
+    public Long getExpiresAt() {
+        return expiresAt;
+    }
+
+    public Long getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setShortCode(String shortCode) {
+        this.shortCode = shortCode;
+    }
+
+    public void setOriginalUrl(String originalUrl) {
+        this.originalUrl = originalUrl;
+    }
+
+    public void setSnowflakeId(Long snowflakeId) {
+        this.snowflakeId = snowflakeId;
+    }
+
+    public void setUsageCounter(int usageCounter) {
+        this.usageCounter = usageCounter;
+    }
+
+    public void setExpiresAt(Long expiresAt) {
+        this.expiresAt = expiresAt;
+    }
+
+    public void setCreatedAt(Long createdAt) {
+        this.createdAt = createdAt;
+    }
+
     @Override
     public String toString() {
         return "Url{" +
-                "shortCode='" + shortCode + '\'' +
-                ", originalUrl='" + originalUrl + '\'' +
-                ", snowflakeId=" + snowflakeId +
-                ", usageCounter=" + usageCounter +
-                ", expiresAt=" + expiresAt +
-                ", createdAt=" + createdAt +
-                '}';
+            "shortCode='" + shortCode + '\'' +
+            ", originalUrl='" + originalUrl + '\'' +
+            ", snowflakeId=" + snowflakeId +
+            ", usageCounter=" + usageCounter +
+            ", expiresAt=" + expiresAt +
+            ", createdAt=" + createdAt +
+            '}';
     }
 
 }
