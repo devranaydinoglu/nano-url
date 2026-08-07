@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 
 
 @Service
@@ -23,6 +24,28 @@ public class UrlService {
         this.baseUrl = baseUrl;
     }
 
+    public Optional<String> findOriginalUrl(String shortCode) {
+        return urlRepository.findById(shortCode)
+            .map(url -> {
+                url.setUsageCounter(url.getUsageCounter() + 1);
+                urlRepository.save(url);
+                return url.getOriginalUrl();
+            });
+    }
+
+    public UrlResponse findByShortCode(String shortCode) {
+        return urlRepository.findById(shortCode)
+            .map(url ->
+                new UrlResponse(
+                    url.getShortCode(),
+                    url.getOriginalUrl(),
+                    url.getExpiresAt(),
+                    url.getCreatedAt()
+                )
+            )
+            .orElse(null);
+    }
+
     public CreateUrlResponse create(CreateUrlRequest req) {
         Long snowflakeId = idGenerator.nextId();
         String shortCode = generateShortCode(snowflakeId);
@@ -33,9 +56,9 @@ public class UrlService {
         urlRepository.save(url);
 
         return new CreateUrlResponse(
-                baseUrl + "/" + shortCode,
-                req.originalUrl(),
-                expiresAt
+            baseUrl + "/" + shortCode,
+            req.originalUrl(),
+            expiresAt
         );
     }
 
