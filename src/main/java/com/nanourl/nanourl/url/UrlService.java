@@ -2,6 +2,7 @@ package com.nanourl.nanourl.url;
 
 import com.nanourl.nanourl.snowflakeid.SnowflakeIdGenerator;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -24,12 +25,17 @@ public class UrlService {
         this.baseUrl = baseUrl;
     }
 
+    @Cacheable(value = "urls", key = "#shortCode")
     public Optional<String> findOriginalUrl(String shortCode) {
         return urlRepository.findById(shortCode)
-            .map(url -> {
+            .map(Url::getOriginalUrl);
+    }
+
+    public void incrementUsageCounter(String shortCode) {
+        urlRepository.findById(shortCode)
+            .ifPresent(url -> {
                 url.setUsageCounter(url.getUsageCounter() + 1);
                 urlRepository.save(url);
-                return url.getOriginalUrl();
             });
     }
 

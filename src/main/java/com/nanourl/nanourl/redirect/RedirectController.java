@@ -27,6 +27,8 @@ public class RedirectController {
             return ResponseEntity.notFound().build();
         }
 
+        urlService.incrementUsageCounter(shortCode);
+
         return ResponseEntity
             .status(HttpStatus.MOVED_PERMANENTLY)
             .location(URI.create(originalUrl.get()))
