@@ -25,7 +25,7 @@ services:
       cassandra_01:
         condition: service_healthy
     volumes:
-      - ./cassandra/init.cql:/init.cql:ro
+      - ./cassandra/init.dev.cql:/init.cql:ro
     entrypoint:
       - sh
       - -c
