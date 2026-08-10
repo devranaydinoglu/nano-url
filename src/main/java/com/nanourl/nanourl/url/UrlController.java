@@ -34,8 +34,17 @@ public class UrlController {
     @PostMapping
     public ResponseEntity<ApiResponse<CreateUrlResponse>> create(@RequestBody @Valid CreateUrlRequest req) {
         CreateUrlResponse response = urlService.create(req);
-        return ResponseEntity.status(HttpStatus.CREATED)
+        return ResponseEntity
+            .status(HttpStatus.CREATED)
             .body(ApiResponse.success(response, "Short URL created successfully"));
+    }
+
+    @DeleteMapping("/{shortCode}")
+    public ResponseEntity<ApiResponse<?>> delete(@PathVariable String shortCode) {
+        urlService.delete(shortCode);
+        return ResponseEntity
+            .status(HttpStatus.OK)
+            .body(ApiResponse.success(null, "Short URL deleted successfully"));
     }
 
 }

@@ -2,6 +2,7 @@ package com.nanourl.nanourl.url;
 
 import com.nanourl.nanourl.snowflakeid.SnowflakeIdGenerator;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
@@ -66,6 +67,11 @@ public class UrlService {
             req.originalUrl(),
             expiresAt
         );
+    }
+
+    @CacheEvict(value = "urls", key = "#shortCode")
+    public void delete(String shortCode) {
+        urlRepository.deleteById(shortCode);
     }
 
     protected String generateShortCode(Long snowflakeId) {
