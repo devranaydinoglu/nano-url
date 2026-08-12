@@ -1,6 +1,8 @@
 package com.nanourl.nanourl.url;
 
 import com.nanourl.nanourl.util.ApiResponse;
+import com.nanourl.nanourl.ratelimit.RateLimitExceededException;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -32,11 +34,17 @@ public class UrlController {
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<CreateUrlResponse>> create(@RequestBody @Valid CreateUrlRequest req) {
-        CreateUrlResponse response = urlService.create(req);
-        return ResponseEntity
-            .status(HttpStatus.CREATED)
-            .body(ApiResponse.success(response, "Short URL created successfully"));
+    public ResponseEntity<ApiResponse<CreateUrlResponse>> create(@RequestBody @Valid CreateUrlRequest createUrlReq, HttpServletRequest httpReq) {
+        try {
+            CreateUrlResponse response = urlService.create(createUrlReq, httpReq.getRemoteAddr());
+            return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success(response, "Short URL created successfully"));
+        } catch (RateLimitExceededException e) {
+            return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(ApiResponse.error(e.getMessage()));
+        }
     }
 
     @DeleteMapping("/{shortCode}")

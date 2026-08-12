@@ -1,6 +1,8 @@
 package com.nanourl.nanourl.url;
 
 import com.nanourl.nanourl.snowflakeid.SnowflakeIdGenerator;
+import com.nanourl.nanourl.ratelimit.RateLimiter;
+import com.nanourl.nanourl.ratelimit.RateLimitExceededException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -16,13 +18,16 @@ public class UrlService {
 
     private final UrlRepository urlRepository;
     private final SnowflakeIdGenerator idGenerator;
+    private final RateLimiter rateLimiter;
     private final String baseUrl;
 
     public UrlService(UrlRepository urlRepository,
                       SnowflakeIdGenerator idGenerator,
+                      RateLimiter rateLimiter,
                       @Value("${app.base-url}") String baseUrl) {
         this.urlRepository = urlRepository;
         this.idGenerator = idGenerator;
+        this.rateLimiter = rateLimiter;
         this.baseUrl = baseUrl;
     }
 
@@ -53,7 +58,10 @@ public class UrlService {
             .orElse(null);
     }
 
-    public CreateUrlResponse create(CreateUrlRequest req) {
+    public CreateUrlResponse create(CreateUrlRequest req, String remoteAddr) {
+        if (rateLimiter.isUrlCreateLimitExceeded(remoteAddr))
+            throw new RateLimitExceededException("Request limit exceeded");
+
         Long snowflakeId = idGenerator.nextId();
         String shortCode = generateShortCode(snowflakeId);
         long expiresAt = calculateExpirationDate(req.validityDuration());
