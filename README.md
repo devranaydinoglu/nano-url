@@ -1,33 +1,334 @@
 # NanoURL
 
-NanoURL is a distributed URL shortener service.
+- [Getting Started](#getting-started)
+  - [Requirements](#requirements)
+  - [Development](#development)
+  - [Production](#production)
+  - [API](#api)
+  - [Stopping the application](#stopping-the-application)
+- [Application Requirements](#application-requirements)
+- [Architecture](#architecture)
+- [Performance Tests](#performance-tests)
+  - [Random URL performance](#random-url-performance)
+  - [Zipf distribution URL performance](#zipf-distribution-url-performance)
 
-## Requirements
+## Getting Started
+
+### Requirements
+
+* Docker
+* Docker Compose
+
+NanoURL provides separate Docker Compose configurations for development and production.
+
+### Development
+
+The development configuration runs a minimal setup consisting of:
+
+* 1 Cassandra node
+* 1 NanoURL application instance
+* 1 Redis instance
+
+Start the development environment with:
+
+```bash
+docker compose -f docker-compose.dev.yml up --build
+```
+
+The development environment uses `http://localhost:8080`.
+
+### Production
+
+The production configuration runs the full distributed setup consisting of:
+
+* 3 Cassandra nodes
+* 3 NanoURL application instances
+* 1 Redis instance
+* Nginx as a load balancer
+
+Start the production environment with:
+
+```bash
+docker compose -f docker-compose.prod.yml up --build
+```
+
+The production environment uses `http://localhost`.
+
+### API
+
+The API exposes endpoints for creating, retrieving, deleting, and redirecting short URLs.
+
+#### Create a short URL
+
+```json5
+POST /urls
+
+// Example body
+{
+    "originalUrl": "https://example.com",
+    "validityDuration": "P1d" // generated short URL expires in 1 day
+}
+
+// Example response
+{
+    "success": true,
+    "message": "Short URL created successfully",
+    "data": {
+        "shortUrl": "http://localhost/60PfKVFCPA",
+        "originalUrl": "https://example.com",
+        "expiresAt": 1786698507806
+    }
+}
+```
+
+#### Redirect to the original URL
+
+```http
+GET /{shortCode}
+
+Example, visit the link in the browser
+http://localhost/5xJvgmvWiW
+```
+
+#### Retrieve a short URL
+
+```json5
+GET /urls/{shortCode}
+
+// Example
+http://localhost/urls/5xJvgmvWiW
+
+// Example response
+{
+    "success": true,
+    "message": "URL retrieved successfully",
+    "data": {
+        "shortCode": "60PfKVFCPA",
+        "originalUrl": "https://example.com",
+        "expiresAt": 1786698507806,
+        "createdAt": 1786612107806
+    }
+}
+```
+
+#### Delete a short URL
+
+```json5
+DELETE /urls/{shortCode}
+
+// Example
+http://localhost/urls/5xJvgmvWiW
+
+// Example response
+{
+    "success": true,
+    "message": "Short URL deleted successfully",
+    "data": null
+}
+```
+
+### Stopping the application
+
+To stop the development environment:
+```bash
+docker compose -f docker-compose.dev.yml down
+```
+
+To stop the production environment:
+```bash
+docker compose -f docker-compose.prod.yml down
+```
+
+To also remove persisted Docker volumes:
+```bash
+docker compose -f docker-compose.dev.yml down -v
+```
+
+or:
+```bash
+docker compose -f docker-compose.prod.yml down -v
+```
+
+## Application Requirements
 
 Estimated load:
-- Write operations: 600 million URLs shortened per month = 20 million per day = ~14000 per minute = ~232 per second
-- Read operations: assuming read/write ratio is 20:1 = 4640 per second
-- Storage: Assuming that the short URL is 10 bytes (excluding the domain), original URL is 100 bytes on average, Snowflake ID is 8 bytes, usage counter is 8 bytes, short URL expiration timestamp is 8 bytes, creation timestamp is 8 bytes = 600 million * 142 bytes = 85.2 GB per month = 1022.4 GB per year
+- **Write operations**: 600 million URLs shortened per month
+  - 20 million per day
+  - ~14,000 per minute
+  - ~232 per second
+- **Read operations**: Assuming a 20:1 read/write ratio, ~4,640 reads per second
+- **Storage**: Assuming a short URL of 10 bytes (excluding the domain), an original URL of 100 bytes on average, an 8-byte Snowflake ID, an 8-byte usage counter, an 8-byte expiration timestamp, and an 8-byte creation timestamp:
+  - 600 million × 142 bytes = 85.2 GB per month
+  - 1,022.4 GB per year
 
 Functional requirements:
-- Create short URL based on a given URL
+- Create short URL from a given URL
 - Delete short URL
-- Expiration of short URL
-- Redirect to the original URL based on a given short URL
-- When visiting short URL/redirecting, track usage counter of short URL
-- Max 5 short URLs creations per month, rate limited by IP
+- Support short URL expiration
+- Redirect to the original URL
+- Track short URL usage
+- Limit short URL creation to a maximum of 5 per month per IP address
 
 Non-functional requirements:
 - Short URLs should be as short as possible
-- Short URL is allowed to contain a-z, A-Z, 0-9
-- Eventual consistency suffices
+- Short URLs may contain only a-z, A-Z, 0-9
+- Eventual consistency is sufficient
 - High availability
 
 ## Architecture
 
+### Short URL Generation
+
+Short URLs are generated by base62 encoding Snowflake IDs. A Snowflake ID is a unique 64-bit integer composed of a 
+timestamp, machine ID, and sequence number. This allows multiple application instances to generate IDs independently 
+without requiring a central ID generator.
+
+Snowflake IDs are converted to a base62 string using the characters a-z, A-Z, and 0-9. Base62 was chosen because it 
+provides a compact, URL-safe representation.
+Since only 63 bits of Snowflake IDs are used (most significant bit is the sign bit), they can represent up to 2^63 
+unique values. An 11 character base62 encoded string can represent up to 62^11 values, representing all Snowflake IDs. 
+Since the earlier Snowflake IDs are shorter, they can be represented by a 10 character encoded string for many years 
+before requiring 11 characters.
+
+### Caching
+
+Redis is used to cache mappings from short URLs to their original URLs, reducing the number of Cassandra reads 
+required for redirects.
+Redis is also used for distributed rate limiting, tracking URL creation requests by IP address.
+
+## Performance Tests
+
+Two types of performance tests were conducted for redirect operations:
+- **Random URL performance**: Requests distributed across random short URLs.
+- **Zipf distribution URL performance**: Small percentage of URLs receive most requests, 
+majority receive relatively few requests. This is a better representation of a real-world workload.
+
+The HTTP benchmarking tool `wrk` was used for both tests. Prior to testing, 1000000 Url records were inserted into
+the Cassandra database. For each test type, the cache was cleared.
+
+Disclaimer: the production/distributed config was run on one machine, leading to some resource contention and lower
+throughput than if the Cassandra nodes and application instances were distributed across multiple machines.
+
+### Random URL performance
+
+Tested with `wrk` using **4 threads, 100 connections, 30s per run** and a randomly distributed URL workload.
+
+| Run | Req/s | Avg. Latency | Cache Hits | Cache Misses | Hit Rate |
+|-----| ----: | -----------: | ---------: | -----------: | -------: |
+| 1   | 1,623 |      90.1 ms |     18,087 |       30,847 |    37.0% |
+| 2   | 5,904 |      18.1 ms |     64,636 |      113,024 |    36.4% |
+| 3   | 6,082 |      17.3 ms |     69,710 |      113,093 |    38.1% |
+| 4   | 5,898 |      18.2 ms |     72,713 |      104,541 |    41.0% |
+
+```
+Running 30s test @ http://localhost
+  4 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    90.14ms  154.37ms   1.96s    95.42%
+    Req/Sec   424.20    280.84     1.82k    74.67%
+  48838 requests in 30.09s, 7.54MB read
+  Socket errors: connect 0, read 0, write 0, timeout 2
+Requests/sec:   1623.09
+Transfer/sec:    256.59KB
+12228 keys in Redis
+keyspace_hits:18087
+keyspace_misses:30847
+
+Running 30s test @ http://localhost
+  4 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    18.13ms   12.31ms 202.66ms   87.75%
+    Req/Sec     1.49k   349.05     2.19k    71.58%
+  177564 requests in 30.07s, 27.41MB read
+Requests/sec:   5904.43
+Transfer/sec:      0.91MB
+55286 keys in Redis
+keyspace_hits:82723
+keyspace_misses:143871
+
+Running 30s test @ http://localhost
+  4 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    17.30ms   10.52ms 152.47ms   85.27%
+    Req/Sec     1.53k   320.93     2.22k    73.08%
+  182707 requests in 30.04s, 28.21MB read
+Requests/sec:   6081.59
+Transfer/sec:      0.94MB
+97457 keys in Redis
+keyspace_hits:152433
+keyspace_misses:256964
+
+Running 30s test @ http://localhost
+  4 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    18.21ms   12.41ms 163.53ms   87.41%
+    Req/Sec     1.48k   358.84     2.15k    71.08%
+  177157 requests in 30.04s, 27.35MB read
+Requests/sec:   5897.78
+Transfer/sec:      0.91MB
+136675 keys in Redis
+keyspace_hits:225146
+keyspace_misses:361505
+```
+
+### Zipf distribution URL performance
+
+Tested with `wrk` using **4 threads, 100 connections, 30s per run** and a Zipf-distributed URL workload.
+
+| Run | Req/s | Avg. Latency | Cache Hits | Cache Misses | Hit Rate |
+|-----| ----: | -----------: | ---------: | -----------: | -------: |
+| 1   | 2,465 |      66.9 ms |     43,786 |       30,420 |    59.0% |
+| 2   | 7,636 |      13.6 ms |    177,545 |       52,306 |    77.2% |
+| 3   | 8,278 |      12.6 ms |    243,293 |        5,925 |    97.6% |
+| 4   | 8,226 |      12.8 ms |    247,558 |            1 |    ~100% |
 
 
-Short URLs are generated by encoding Snowflake IDs using base62 encoding. A Snowflake ID is a unique 64-bit integer composed of a timestamp, machine ID, and sequence number. This allows multiple application instances to generate IDs independently without requiring a central ID generator.
+```
+Running 30s test @ http://localhost
+  4 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    66.89ms  136.51ms   1.39s    96.06%
+    Req/Sec   643.43    456.46     2.31k    77.40%
+  74114 requests in 30.07s, 11.31MB read
+Requests/sec:   2464.73
+Transfer/sec:    385.31KB
+12185 keys in Redis
+keyspace_hits:43786
+keyspace_misses:30420
 
-Snowflake IDs are converted to a base62 string using the characters a-z, A-Z, and 0-9. base62 is chosen because it provides a compact, URL-safe representation.
-Since only 63 bits of Snowflake IDs are used (most significant bit is the sign bit), they can represent up to 2^63 unique values. An 11 character base62 encoded string can represent up to 62^11 values, representing all Snowflake IDs. Since the earlier Snowflake IDs are shorter, they can be represented by a 10 character encoded string for many years before requiring 11 characters.
+Running 30s test @ http://localhost
+  4 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    13.57ms    7.34ms 106.71ms   81.76%
+    Req/Sec     1.92k   366.55     2.95k    70.13%
+  229754 requests in 30.09s, 35.08MB read
+Requests/sec:   7635.74
+Transfer/sec:      1.17MB
+33027 keys in Redis
+keyspace_hits:221331
+keyspace_misses:82726
+
+Running 30s test @ http://localhost
+  4 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    12.57ms    7.02ms 111.63ms   82.47%
+    Req/Sec     2.08k   393.31     3.86k    70.57%
+  249123 requests in 30.10s, 38.03MB read
+Requests/sec:   8277.88
+Transfer/sec:      1.26MB
+35443 keys in Redis
+keyspace_hits:464624
+keyspace_misses:88651
+
+Running 30s test @ http://localhost
+  4 threads and 100 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    12.80ms    7.89ms 135.44ms   86.85%
+    Req/Sec     2.07k   457.88     4.62k    70.88%
+  247461 requests in 30.08s, 37.78MB read
+Requests/sec:   8225.95
+Transfer/sec:      1.26MB
+35443 keys in Redis
+keyspace_hits:712182
+keyspace_misses:88652
+```
